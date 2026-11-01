@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenLifter OBS Live Overlay</title>
+  <style>
+    :root {
+      --bg-card: rgba(13, 17, 26, 0.92);
+      --bg-panel: rgba(23, 30, 46, 0.95);
+      --bg-subtle: rgba(255, 255, 255, 0.06);
+      --border-subtle: rgba(255, 255, 255, 0.14);
+      --accent-red: #e11d48;
+      --accent-gold: #f59e0b;
+      --good-lift: #16a34a;
+      --no-lift: #dc2626;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      inline-size: 100%;
+      block-size: 100%;
+      background: transparent;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Optional simulated camera backdrop when testing in normal browser outside OBS */
+    body.preview-backdrop {
+      background:
+        radial-gradient(circle at 50% 35%, rgba(30, 41, 59, 0.55), rgba(9, 13, 22, 0.92)),
+        repeating-linear-gradient(45deg, #1e293b 0, #1e293b 2px, #0f172a 2px, #0f172a 24px);
+    }
+
+    .stage {
+      position: relative;
+      inline-size: 100%;
+      min-block-size: 100dvb;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      padding-block: 28px;
+      padding-inline: 40px;
+    }
+
+    /* Floating preview toolbar (auto-hidden inside OBS or with ?clean=1) */
+    .preview-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-block: 8px;
+      padding-inline: 14px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+      font-size: 13px;
+      margin-block-end: 16px;
+      transition: opacity 0.2s ease;
+    }
+
+    body.clean-mode .preview-toolbar {
+      display: none;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toolbar-btn {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding-block: 5px;
+      padding-inline: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .toolbar-btn.active {
+      background: var(--accent-red);
+      border-color: var(--accent-red);
+    }
+
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .sync-dot {
+      inline-size: 8px;
+      block-size: 8px;
+      border-radius: 50%;
+      background: var(--good-lift);
+    }
+
+    /* Flight Standings Board (Center/Top area when enabled) */
+    .board-wrapper {
+      align-self: center;
+      justify-self: center;
+      inline-size: min(1240px, 100%);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+      padding-block: 20px;
+      padding-inline: 24px;
+      display: none;
+    }
+
+    body[data-view="board"] .board-wrapper,
+    body[data-view="both"] .board-wrapper {
+      display: block;
+    }
+
+    body[data-view="board"] .lower-third-wrapper {
+      display: none;
+    }
+
+    .board-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding-block-end: 14px;
+      margin-block-end: 14px;
+      border-block-end: 2px solid var(--accent-red);
+    }
+
+    .board-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-transform: uppercase;
+    }
+
+    .board-subtitle {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent-gold);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    table.flight-table {
+      inline-size: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .flight-table th {
+      text-align: start;
+      padding-block: 8px;
+      padding-inline: 10px;
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-block-end: 1px solid var(--border-subtle);
+    }
+
+    .flight-table td {
+      padding-block: 9px;
+      padding-inline: 10px;
+      border-block-end: 1px solid rgba(255, 255, 255, 0.06);
+      font-weight: 600;
+    }
+
+    .flight-table tr.current-row {
+      background: rgba(245, 158, 11, 0.16);
+      outline: 1px solid rgba(245, 158, 11, 0.55);
+    }
+
+    .cell-attempt {
+      text-align: center;
+      border-radius: 4px;
+      min-inline-size: 54px;
+    }
+
+    .cell-attempt.good {
+      background: rgba(22, 163, 74, 0.28);
+      color: #86efac;
+    }
+
+    .cell-attempt.no-lift {
+      background: rgba(220, 38, 38, 0.28);
+      color: #fca5a5;
+      text-decoration: line-through;
+    }
+
+    .cell-attempt.active-attempt {
+      background: rgba(245, 158, 11, 0.25);
+      color: #fde68a;
+      font-weight: 800;
+    }
+
+    /* Broadcast Lower-Third Banner */
+    .lower-third-wrapper {
+      grid-row: 3;
+      justify-self: center;
+      inline-size: min(1420px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Top strip above lower-third: Meet Name + Next Up ("On Deck") + Rack Info */
+    .lt-top-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .lt-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-pill {
+      padding-block: 5px;
+      padding-inline: 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .badge-lift {
+      background: var(--accent-red);
+      border-color: #fb7185;
+      color: #fff;
+    }
+
+    .badge-rack {
+      color: #fde68a;
+    }
+
+    .on-deck-pill {
+      padding-block: 5px;
+      padding-inline: 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+
+    .on-deck-pill strong {
+      color: var(--text-main);
+    }
+
+    /* Main Lower-Third Grid Card */
+    .lt-card {
+      display: grid;
+      grid-template-columns: 1.4fr auto auto auto;
+      align-items: stretch;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-inline-start: 6px solid var(--accent-red);
+      border-radius: 12px;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(16px);
+    }
+
+    .lt-section {
+      padding-block: 14px;
+      padding-inline: 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-inline-end: 1px solid var(--border-subtle);
+    }
+
+    .lt-section:last-child {
+      border-inline-end: none;
+    }
+
+    .lifter-name {
+      font-size: 30px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+
+    .lifter-meta {
+      margin-block-start: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .lifter-meta span.meta-tag {
+      color: #e2e8f0;
+      background: var(--bg-subtle);
+      padding-block: 2px;
+      padding-inline: 8px;
+      border-radius: 4px;
+    }
+
+    /* Attempts Progression Strip (1st / 2nd / 3rd) */
+    .attempts-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-block-end: 6px;
+    }
+
+    .attempts-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .attempt-pill {
+      min-inline-size: 78px;
+      padding-block: 7px;
+      padding-inline: 10px;
+      border-radius: 7px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-subtle);
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .attempt-pill.good {
+      background: var(--good-lift);
+      border-color: #4ade80;
+      color: #fff;
+    }
+
+    .attempt-pill.no-lift {
+      background: var(--no-lift);
+      border-color: #f87171;
+      color: #fff;
+      text-decoration: line-through;
+    }
+
+    .attempt-pill.current {
+      background: rgba(245, 158, 11, 0.22);
+      border: 2px solid var(--accent-gold);
+      color: #fef08a;
+    }
+
+    /* S / B / D / Total Summary */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(64px, auto));
+      gap: 10px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-box {
+      background: var(--bg-subtle);
+      border-radius: 7px;
+      padding-block: 6px;
+      padding-inline: 10px;
+    }
+
+    .stat-box.total-box {
+      background: rgba(225, 29, 72, 0.2);
+      border: 1px solid rgba(225, 29, 72, 0.5);
+    }
+
+    .stat-label {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-size: 17px;
+      font-weight: 800;
+      margin-block-start: 2px;
+    }
+
+    /* Current Bar Weight + Visual Plate Loading */
+    .bar-weight-section {
+      background: linear-gradient(135deg, rgba(225, 29, 72, 0.22), rgba(15, 23, 42, 0.95));
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 18px;
+      padding-inline: 24px;
+    }
+
+    .bar-weight-Primary {
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+    }
+
+    .bar-weight-secondary {
+      font-size: 13px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-block-start: 4px;
+    }
+
+    /* Visual Bar Graphic */
+    .plate-graphic {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-block-size: 56px;
+    }
+
+    .bar-sleeve {
+      inline-size: 10px;
+      block-size: 8px;
+      background: #94a3b8;
+      border-radius: 2px 0 0 2px;
+    }
+
+    .plate-disc {
+      inline-size: 11px;
+      border-radius: 3px;
+      border: 1px solid rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      font-weight: 800;
+      writing-mode: vertical-rl;
+    }
+
+    .bar-collar {
+      inline-size: 8px;
+      block-size: 16px;
+      background: #cbd5e1;
+      border-radius: 2px;
+      margin-inline-start: 1px;
+    }
+  </style>
+</head>
+<body data-view="lower-third" class="preview-backdrop">
+  <div class="stage">
+    <!-- Top preview bar: automatically hidden in OBS Browser Source or when ?clean=1 -->
+    <div class="preview-toolbar" id="previewToolbar">
+      <div class="toolbar-group">
+        <span class="sync-badge">
+          <span class="sync-dot" id="syncDot"></span>
+          <span id="syncStatus">Live SSE Connected</span>
+        </span>
+      </div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn active" data-set-view="lower-third">Lower-Third Only</button>
+        <button class="toolbar-btn" data-set-view="board">Full Flight Board</button>
+        <button class="toolbar-btn" data-set-view="both">Both</button>
+        <button class="toolbar-btn" id="toggleBackdropBtn">Toggle Test Backdrop</button>
+      </div>
+    </div>
+
+    <!-- Center: Full Flight Standings & Lifting Order Board -->
+    <div class="board-wrapper">
+      <div class="board-header">
+        <div class="board-title" id="boardMeetName">Waiting for OpenLifter...</div>
+        <div class="board-subtitle" id="boardFlightInfo">Flight A • Squat</div>
+      </div>
+      <table class="flight-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Lifter</th>
+            <th>Team</th>
+            <th>Class / BW</th>
+            <th>Rack</th>
+            <th style="text-align:center">1st</th>
+            <th style="text-align:center">2nd</th>
+            <th style="text-align:center">3rd</th>
+            <th style="text-align:end">Best S</th>
+            <th style="text-align:end">Best B</th>
+            <th style="text-align:end">Best D</th>
+            <th style="text-align:end">Total</th>
+          </tr>
+        </thead>
+        <tbody id="flightTableBody">
+          <tr>
+            <td colspan="12" style="text-align:center;color:#94a3b8;padding:24px;">
+              Open OpenLifter at <strong>http://localhost:8080</strong> and click <strong>Load Demo Flight</strong> (bottom-right) to test!
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Bottom: Broadcast Lower-Third Overlay -->
+    <div class="lower-third-wrapper">
+      <div class="lt-top-strip">
+        <div class="lt-badges">
+          <span class="badge-pill badge-lift" id="ltLiftBadge">SQUAT • ATTEMPT 1</span>
+          <span class="badge-pill" id="ltFlightBadge">FLIGHT A</span>
+          <span class="badge-pill badge-rack" id="ltRackBadge">RACK: —</span>
+        </div>
+        <div class="on-deck-pill" id="ltOnDeck">
+          ON DECK: <strong>—</strong>
+        </div>
+      </div>
+
+      <div class="lt-card">
+        <!-- 1. Lifter Identity -->
+        <div class="lt-section">
+          <div class="lifter-name" id="ltLifterName">Waiting for Lifter...</div>
+          <div class="lifter-meta" id="ltLifterMeta">
+            <span class="meta-tag">OpenLifter Live Sync</span>
+          </div>
+        </div>
+
+        <!-- 2. Current Lift Attempts (1 / 2 / 3) -->
+        <div class="lt-section">
+          <div class="attempts-label" id="ltAttemptsHeader">Squat Attempts</div>
+          <div class="attempts-row" id="ltAttemptsRow">
+            <div class="attempt-pill">—</div>
+            <div class="attempt-pill">—</div>
+            <div class="attempt-pill">—</div>
+          </div>
+        </div>
+
+        <!-- 3. Meet Summary (Best S / B / D / Total) -->
+        <div class="lt-section">
+          <div class="summary-grid">
+            <div class="stat-box">
+              <div class="stat-label">Squat</div>
+              <div class="stat-value" id="ltBestS">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Bench</div>
+              <div class="stat-value" id="ltBestB">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Deadlift</div>
+              <div class="stat-value" id="ltBestD">—</div>
+            </div>
+            <div class="stat-box total-box">
+              <div class="stat-label">Total</div>
+              <div class="stat-value" id="ltTotal">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Bar Weight & Plate Graphic -->
+        <div class="lt-section bar-weight-section">
+          <div>
+            <div class="bar-weight-Primary" id="ltBarPrimary">0 kg</div>
+            <div class="bar-weight-secondary" id="ltBarSecondary">0 lbs</div>
+          </div>
+          <div class="plate-graphic" id="ltPlateGraphic"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Detect OBS Browser Source or URL query params (?mode=lower-third|board|both&clean=1)
+    const params = new URLSearchParams(window.location.search);
+    const initialMode = params.get("mode") || "lower-third";
+    document.body.setAttribute("data-view", initialMode);
+
+    if (window.obsstudio || params.get("clean") === "1") {
+      document.body.classList.add("clean-mode");
+      document.body.classList.remove("preview-backdrop");
+    }
+
+    document.querySelectorAll("[data-set-view]").forEach((btn) => {
+      if (btn.getAttribute("data-set-view") === initialMode) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-set-view");
+        document.body.setAttribute("data-view", mode);
+        document.querySelectorAll("[data-set-view]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+    document.getElementById("toggleBackdropBtn").addEventListener("click", () => {
+      document.body.classList.toggle("preview-backdrop");
+    });
+
+    // --- OpenLifter Exact Lifting Order & Scoring Logic ---
+    const MAX_ATTEMPTS = 5;
+
+    function liftToAttemptFieldName(lift) {
+      if (lift === "B") return "benchKg";
+      if (lift === "D") return "deadliftKg";
+      return "squatKg";
+    }
+
+    function liftToStatusFieldName(lift) {
+      if (lift === "B") return "benchStatus";
+      if (lift === "D") return "deadliftStatus";
+      return "squatStatus";
+    }
+
+    function liftToFullName(lift) {
+      if (lift === "B") return "Bench Press";
+      if (lift === "D") return "Deadlift";
+      return "Squat";
+    }
+
+    function getNextAttemptNumberForEntry(entry, fieldKg, fieldStatus) {
+      const weightsKg = entry[fieldKg] || [];
+      const statuses = entry[fieldStatus] || [];
+      for (let i = MAX_ATTEMPTS - 1; i >= 0; i--) {
+        if (weightsKg[i] !== 0 && statuses[i] === 0) return i + 1;
+      }
+      return 0;
+    }
+
+    function getMaxAttemptNumberForEntry(entry, fieldKg, fieldStatus) {
+      const weightsKg = entry[fieldKg] || [];
+      const statuses = entry[fieldStatus] || [];
+      for (let i = MAX_ATTEMPTS - 1; i >= 0; i--) {
+        if (weightsKg[i] !== 0 && statuses[i] !== 0) return i + 1;
+      }
+      return 0;
+    }
+
+    function getActiveAttemptNumber(entriesInFlight, lifting) {
+      const fieldKg = liftToAttemptFieldName(lifting.lift);
+      const fieldStatus = liftToStatusFieldName(lifting.lift);
+      if (lifting.overrideAttempt !== null && lifting.overrideAttempt !== undefined) {
+        return Number(lifting.overrideAttempt);
+      }
+      let earliest = MAX_ATTEMPTS + 1;
+      for (const entry of entriesInFlight) {
+        const next = getNextAttemptNumberForEntry(entry, fieldKg, fieldStatus);
+        if (next > 0 && next < earliest) earliest = next;
+      }
+      if (earliest < MAX_ATTEMPTS + 1) return earliest;
+
+      let latest = 0;
+      for (const entry of entriesInFlight) {
+        const max = getMaxAttemptNumberForEntry(entry, fieldKg, fieldStatus);
+        if (max > latest) latest = max;
+      }
+      if (latest > 0) {
+        return latest + 1 >= 4 ? latest : latest + 1;
+      }
+      return 1;
+    }
+
+    function compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed) {
+      const aKg = a[fieldKg][attemptOneIndexed - 1] || 0;
+      const bKg = b[fieldKg][attemptOneIndexed - 1] || 0;
+      if (aKg !== bKg) return aKg - bKg;
+      if (a.lot !== 0 && b.lot !== 0) return a.lot - b.lot;
+      if (attemptOneIndexed > 1) {
+        return compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed - 1);
+      }
+      if (a.bodyweightKg !== b.bodyweightKg) return a.bodyweightKg - b.bodyweightKg;
+      return a.name.localeCompare(b.name);
+    }
+
+    function orderEntriesForAttempt(entriesInFlight, lifting, attemptOneIndexed) {
+      const fieldKg = liftToAttemptFieldName(lifting.lift);
+      const attemptZero = attemptOneIndexed - 1;
+      const existsNext = attemptOneIndexed + 1 <= MAX_ATTEMPTS;
+      const existsPrev = attemptOneIndexed > 1;
+
+      const byNext = [];
+      const byThis = [];
+      const byPrev = [];
+      const notLifting = [];
+
+      for (const entry of entriesInFlight) {
+        if (existsNext && entry[fieldKg][attemptZero + 1] !== 0) {
+          byNext.push(entry);
+        } else if (entry[fieldKg][attemptZero] !== 0) {
+          byThis.push(entry);
+        } else if (existsPrev && entry[fieldKg][attemptZero - 1] !== 0) {
+          byPrev.push(entry);
+        } else {
+          notLifting.push(entry);
+        }
+      }
+
+      if (existsNext) byNext.sort((a, b) => compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed + 1));
+      byThis.sort((a, b) => compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed));
+      if (existsPrev) byPrev.sort((a, b) => compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed - 1));
+      notLifting.sort((a, b) => compareEntriesByAttempt(a, b, fieldKg, attemptOneIndexed));
+
+      return [].concat(byNext, byThis, byPrev, notLifting);
+    }
+
+    function getLiftingOrder(entriesInFlight, lifting) {
+      const attemptOneIndexed = getActiveAttemptNumber(entriesInFlight, lifting);
+      const orderedEntries = orderEntriesForAttempt(entriesInFlight, lifting, attemptOneIndexed);
+      const fieldKg = liftToAttemptFieldName(lifting.lift);
+      const fieldStatus = liftToStatusFieldName(lifting.lift);
+
+      let currentEntryId = null;
+      if (lifting.overrideEntryId !== null && lifting.overrideEntryId !== undefined) {
+        if (orderedEntries.some((e) => e.id === Number(lifting.overrideEntryId))) {
+          currentEntryId = Number(lifting.overrideEntryId);
+        }
+      }
+      if (currentEntryId === null) {
+        for (const entry of orderedEntries) {
+          const idx = attemptOneIndexed - 1;
+          if (entry[fieldKg][idx] !== 0 && entry[fieldStatus][idx] === 0) {
+            currentEntryId = entry.id;
+            break;
+          }
+        }
+      }
+
+      let nextInfo = null;
+      if (currentEntryId !== null) {
+        const currIdx = orderedEntries.findIndex((e) => e.id === currentEntryId);
+        for (let i = currIdx + 1; i < orderedEntries.length; i++) {
+          if (orderedEntries[i][fieldKg][attemptOneIndexed - 1] !== 0 && orderedEntries[i][fieldStatus][attemptOneIndexed - 1] === 0) {
+            nextInfo = { entry: orderedEntries[i], attemptOneIndexed };
+            break;
+          }
+        }
+        if (!nextInfo && attemptOneIndexed + 1 <= MAX_ATTEMPTS) {
+          const nextAtt = attemptOneIndexed + 1;
+          for (let i = 0; i < currIdx; i++) {
+            if (orderedEntries[i][fieldKg][nextAtt - 1] !== 0 && orderedEntries[i][fieldStatus][nextAtt - 1] === 0) {
+              nextInfo = { entry: orderedEntries[i], attemptOneIndexed: nextAtt };
+              break;
+            }
+          }
+        }
+      }
+
+      return { orderedEntries, attemptOneIndexed, currentEntryId, nextInfo };
+    }
+
+    function getBest3(entry, fieldKg, fieldStatus) {
+      let best = 0;
+      for (let i = 0; i < 3; i++) {
+        if (entry[fieldStatus][i] > 0) best = Math.max(best, entry[fieldKg][i]);
+      }
+      return best;
+    }
+
+    function getCurrentTotal(entry) {
+      const s = getBest3(entry, "squatKg", "squatStatus");
+      const b = getBest3(entry, "benchKg", "benchStatus");
+      const d = getBest3(entry, "deadliftKg", "deadliftStatus");
+      return s + b + d;
+    }
+
+    function kgToLbs(kg) {
+      return Math.round(kg * 2.20462262 * 10) / 10;
+    }
+
+    function formatNum(n) {
+      if (!n || n <= 0) return "—";
+      return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, "");
+    }
+
+    function computePlates(weightKg, barAndCollarsKg, plates) {
+      if (!weightKg || weightKg <= barAndCollarsKg) return [];
+      const sorted = (plates || []).slice().sort((a, b) => b.weightKg - a.weightKg);
+      let side = (weightKg - barAndCollarsKg) / 2;
+      const loaded = [];
+      for (const p of sorted) {
+        let count = p.pairCount;
+        while (count > 0 && p.weightKg <= side + 1e-6) {
+          count--;
+          side -= p.weightKg;
+          loaded.push({ weightKg: p.weightKg, color: p.color });
+        }
+      }
+      return loaded;
+    }
+
+    function renderPlateGraphic(plates) {
+      const container = document.getElementById("ltPlateGraphic");
+      container.innerHTML = "";
+      if (!plates.length) return;
+
+      const sleeve = document.createElement("div");
+      sleeve.className = "bar-sleeve";
+      container.appendChild(sleeve);
+
+      for (const p of plates) {
+        const disc = document.createElement("div");
+        disc.className = "plate-disc";
+        const heightPx = p.weightKg >= 25 ? 54 : p.weightKg >= 20 ? 52 : p.weightKg >= 15 ? 44 : p.weightKg >= 10 ? 38 : p.weightKg >= 5 ? 30 : 24;
+        disc.style.blockSize = `${heightPx}px`;
+        disc.style.background = p.color || "#e11d48";
+        container.appendChild(disc);
+      }
+
+      const collar = document.createElement("div");
+      collar.className = "bar-collar";
+      container.appendChild(collar);
+    }
+
+    function renderState(state) {
+      if (!state || !state.registration || !state.lifting || !state.meet) return;
+
+      const { meet, registration, lifting } = state;
+      const entries = (registration.entries || []).filter(
+        (e) => e.day === lifting.day && e.platform === lifting.platform && e.flight === lifting.flight
+      );
+
+      const order = getLiftingOrder(entries, lifting);
+      const liftName = liftToFullName(lifting.lift);
+      const fieldKg = liftToAttemptFieldName(lifting.lift);
+      const fieldStatus = liftToStatusFieldName(lifting.lift);
+
+      // Update Board Header
+      document.getElementById("boardMeetName").textContent = meet.name || "Powerlifting Competition";
+      document.getElementById("boardFlightInfo").textContent =
+        `Day ${lifting.day} • Platform ${lifting.platform} • Flight ${lifting.flight} • ${liftName} (Attempt ${order.attemptOneIndexed})`;
+
+      // Update Flight Table
+      const tbody = document.getElementById("flightTableBody");
+      tbody.innerHTML = "";
+      order.orderedEntries.forEach((entry, idx) => {
+        const tr = document.createElement("tr");
+        if (entry.id === order.currentEntryId) tr.className = "current-row";
+
+        const rack = lifting.lift === "S" ? entry.squatRackInfo : lifting.lift === "B" ? entry.benchRackInfo : "—";
+        const bestS = getBest3(entry, "squatKg", "squatStatus");
+        const bestB = getBest3(entry, "benchKg", "benchStatus");
+        const bestD = getBest3(entry, "deadliftKg", "deadliftStatus");
+        const total = bestS + bestB + bestD;
+
+        let attemptsHtml = "";
+        for (let i = 0; i < 3; i++) {
+          const w = entry[fieldKg][i];
+          const st = entry[fieldStatus][i];
+          const isCurrent = entry.id === order.currentEntryId && order.attemptOneIndexed === i + 1 && st === 0;
+          const cls = st === 1 ? "good" : st === -1 ? "no-lift" : isCurrent ? "active-attempt" : "";
+          attemptsHtml += `<td class="cell-attempt ${cls}">${formatNum(w)}</td>`;
+        }
+
+        tr.innerHTML = `
+          <td>${idx + 1}</td>
+          <td><strong>${entry.name || "Unnamed"}</strong></td>
+          <td style="color:#94a3b8">${entry.team || "—"}</td>
+          <td>${entry.intendedWeightClassKg ? entry.intendedWeightClassKg + " kg" : "—"} <span style="color:#94a3b8">(${formatNum(entry.bodyweightKg)})</span></td>
+          <td style="color:#fde68a">${rack || "—"}</td>
+          ${attemptsHtml}
+          <td style="text-align:end">${formatNum(bestS)}</td>
+          <td style="text-align:end">${formatNum(bestB)}</td>
+          <td style="text-align:end">${formatNum(bestD)}</td>
+          <td style="text-align:end;color:#fda4af;font-weight:800">${formatNum(total)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Update Lower-Third
+      document.getElementById("ltLiftBadge").textContent = `${liftName.toUpperCase()} • ATTEMPT ${order.attemptOneIndexed}`;
+      document.getElementById("ltFlightBadge").textContent = `FLIGHT ${lifting.flight}`;
+      document.getElementById("ltAttemptsHeader").textContent = `${liftName} Attempts (kg)`;
+
+      const currentEntry = order.orderedEntries.find((e) => e.id === order.currentEntryId) || order.orderedEntries[0];
+
+      if (order.nextInfo && order.nextInfo.entry) {
+        const nextW = order.nextInfo.entry[fieldKg][order.nextInfo.attemptOneIndexed - 1];
+        document.getElementById("ltOnDeck").innerHTML =
+          `ON DECK: <strong>${order.nextInfo.entry.name}</strong> (${formatNum(nextW)} kg)`;
+      } else {
+        document.getElementById("ltOnDeck").innerHTML = `ON DECK: <strong>—</strong>`;
+      }
+
+      if (!currentEntry) {
+        document.getElementById("ltLifterName").textContent = "No Active Lifter in Flight";
+        return;
+      }
+
+      const rack = lifting.lift === "S" ? currentEntry.squatRackInfo : lifting.lift === "B" ? currentEntry.benchRackInfo : "";
+      document.getElementById("ltRackBadge").textContent = rack ? `RACK: ${rack}` : `PLATFORM ${lifting.platform}`;
+
+      document.getElementById("ltLifterName").textContent = currentEntry.name || "Unnamed Lifter";
+
+      const metaTags = [];
+      if (currentEntry.team) metaTags.push(`<span class="meta-tag">${currentEntry.team}</span>`);
+      if (currentEntry.intendedWeightClassKg) metaTags.push(`<span class="meta-tag">${currentEntry.intendedWeightClassKg} kg Class</span>`);
+      if (currentEntry.bodyweightKg) metaTags.push(`<span>BW: ${formatNum(currentEntry.bodyweightKg)} kg</span>`);
+      if (currentEntry.divisions && currentEntry.divisions.length) metaTags.push(`<span>${currentEntry.divisions.join(", ")}</span>`);
+      document.getElementById("ltLifterMeta").innerHTML = metaTags.join("");
+
+      // Attempts row (1 / 2 / 3)
+      const attemptsRow = document.getElementById("ltAttemptsRow");
+      attemptsRow.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        const w = currentEntry[fieldKg][i];
+        const st = currentEntry[fieldStatus][i];
+        const pill = document.createElement("div");
+        const isCurrent = order.attemptOneIndexed === i + 1 && st === 0;
+        pill.className = "attempt-pill " + (st === 1 ? "good" : st === -1 ? "no-lift" : isCurrent ? "current" : "");
+        pill.textContent = formatNum(w);
+        attemptsRow.appendChild(pill);
+      }
+
+      // Best S / B / D / Total
+      const bestS = getBest3(currentEntry, "squatKg", "squatStatus");
+      const bestB = getBest3(currentEntry, "benchKg", "benchStatus");
+      const bestD = getBest3(currentEntry, "deadliftKg", "deadliftStatus");
+      document.getElementById("ltBestS").textContent = formatNum(bestS);
+      document.getElementById("ltBestB").textContent = formatNum(bestB);
+      document.getElementById("ltBestD").textContent = formatNum(bestD);
+      document.getElementById("ltTotal").textContent = formatNum(getCurrentTotal(currentEntry));
+
+      // Bar Weight & Plate Loading
+      const currentWeightKg = currentEntry[fieldKg][order.attemptOneIndexed - 1] || 0;
+      document.getElementById("ltBarPrimary").textContent = `${formatNum(currentWeightKg)} kg`;
+      document.getElementById("ltBarSecondary").textContent = `${formatNum(kgToLbs(currentWeightKg))} lbs`;
+
+      const barWeight =
+        lifting.lift === "B"
+          ? meet.benchBarAndCollarsWeightKg
+          : lifting.lift === "D"
+          ? meet.deadliftBarAndCollarsWeightKg
+          : meet.squatBarAndCollarsWeightKg;
+      const loadedPlates = computePlates(currentWeightKg, barWeight || 25, meet.plates || []);
+      renderPlateGraphic(loadedPlates);
+    }
+
+    // Connect to live SSE stream from server.js
+    function connectStream() {
+      const dot = document.getElementById("syncDot");
+      const status = document.getElementById("syncStatus");
+      const es = new EventSource("/api/stream");
+
+      es.onopen = () => {
+        dot.style.background = "#16a34a";
+        status.textContent = "Live SSE Connected";
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.state) renderState(payload.state);
+        } catch (err) {
+          console.error("Failed to parse SSE state", err);
+        }
+      };
+
+      es.onerror = () => {
+        dot.style.background = "#dc2626";
+        status.textContent = "Reconnecting...";
+      };
+    }
+
+    connectStream();
+  </script>
+</body>
+</html>
