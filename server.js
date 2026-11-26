@@ -53,6 +53,46 @@ function broadcastState() {
 
 // Script injected into OpenLifter's index.html to stream localStorage ('persist:root') to our server
 const INJECTED_BRIDGE_SCRIPT = `
+<style>
+  #switch-version-modal {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 20px 24px;
+    max-width: 460px;
+    width: calc(100% - 32px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #111827;
+    background: #ffffff;
+  }
+  #switch-version-modal:modal {
+    overscroll-behavior: contain;
+  }
+  #switch-version-modal::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+  #switch-version-modal h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 12px;
+  }
+  #switch-version-modal p {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0 0 12px;
+    color: #374151;
+  }
+  #switch-version-modal form {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+  a[href^="https://www.openlifter.com/releases/"] button {
+    opacity: 0.65;
+  }
+</style>
 <script>
 (function() {
   let lastRaw = null;
@@ -141,9 +181,94 @@ const INJECTED_BRIDGE_SCRIPT = `
     navbar.appendChild(bar);
   }
 
+  function ensureSwitchWarningModal() {
+    let dialog = document.getElementById("switch-version-modal");
+    if (dialog) return dialog;
+
+    dialog = document.createElement("dialog");
+    dialog.id = "switch-version-modal";
+    dialog.setAttribute("closedby", "any");
+    dialog.setAttribute("aria-labelledby", "switch-version-modal-title");
+
+    const title = document.createElement("h1");
+    title.id = "switch-version-modal-title";
+    title.textContent = "Stay on Local OpenLifter";
+
+    const msg = document.createElement("p");
+    msg.textContent = "You probably don't want to go to https://www.openlifter.com/.";
+
+    const detail = document.createElement("p");
+    detail.textContent = "This local OpenLifter instance is connected to the live OBS overlay bridge. Switching to openlifter.com will disconnect from your local server and overlay.";
+
+    const form = document.createElement("form");
+    form.method = "dialog";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "submit";
+    closeBtn.className = "btn btn-primary";
+    closeBtn.textContent = "Close";
+    closeBtn.autofocus = true;
+
+    form.appendChild(closeBtn);
+    dialog.appendChild(title);
+    dialog.appendChild(msg);
+    dialog.appendChild(detail);
+    dialog.appendChild(form);
+
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      const outside = function(e) {
+        const r = dialog.getBoundingClientRect();
+        return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+      };
+      let pressedOutside = false;
+      dialog.addEventListener("pointerdown", function(e) {
+        pressedOutside = outside(e);
+      });
+      dialog.addEventListener("pointerup", function(e) {
+        if (pressedOutside && outside(e)) dialog.close();
+      });
+    }
+
+    document.body.appendChild(dialog);
+    return dialog;
+  }
+
+  function showSwitchWarningModal() {
+    const dialog = ensureSwitchWarningModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+  }
+
+  function markSwitchButtons() {
+    const buttons = document.querySelectorAll('a[href^="https://www.openlifter.com/releases/"] button');
+    for (const btn of buttons) {
+      if (btn.getAttribute("aria-disabled") !== "true") {
+        btn.setAttribute("aria-disabled", "true");
+      }
+    }
+  }
+
+  function handleSwitchLinkActivation(e) {
+    const link = e.target && e.target.closest
+      ? e.target.closest('a[href^="https://www.openlifter.com/releases/"]')
+      : null;
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showSwitchWarningModal();
+  }
+
+  document.addEventListener("click", handleSwitchLinkActivation, true);
+  document.addEventListener("auxclick", handleSwitchLinkActivation, true);
+
   window.addEventListener("DOMContentLoaded", function() {
     mountToolbar();
-    setInterval(mountToolbar, 500);
+    markSwitchButtons();
+    setInterval(function() {
+      mountToolbar();
+      markSwitchButtons();
+    }, 500);
     pushState(true);
   });
 })();
