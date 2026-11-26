@@ -67,11 +67,11 @@ You will see output similar to:
 ==============================================================
 ```
 
-### 2. Open OpenLifter & Load Demo Data
+### 2. Open OpenLifter & Load a Meet
 
 1. Open **`http://localhost:8080/releases/1.3/`** in your browser.
 2. In the top-right navigation bar, verify the green **OBS Synced** indicator is visible.
-3. Click **Load Demo Flight** in the top navbar to populate a 6-lifter flight and jump straight to the **Lifting** screen (or set up your own meet under **Meet Setup** → **Registration** → **Weigh-ins**).
+3. Click **Load from File** on the **Home** page to import an `.openlifter` meet file (or set up your own meet under **Meet Setup** → **Registration** → **Weigh-ins**), then switch to the **Lifting** tab.
 
 ### 3. Preview the Overlay in a Browser or Local OBS
 
