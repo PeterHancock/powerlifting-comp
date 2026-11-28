@@ -25,7 +25,8 @@ OpenLifter is a client-side React/Redux application that saves competition state
 ┌──────────────────────────────┐
 │  OBS Studio Browser Source   │
 │  (Local Mac or Windows PC)   │
-│  http://<mac-ip>:8080/overlay│
+│  http://<mac-ip>:8080/overlay/default │
+│  http://<mac-ip>:8080/overlay/maverick│
 └──────────────────────────────┘
 ```
 
@@ -61,9 +62,9 @@ You will see output similar to:
 ==============================================================
 🏋️  OpenLifter + OBS Live Overlay Server Running!
 ==============================================================
-1. OpenLifter (Scorekeeper Mac):  http://localhost:8080/releases/1.3/
-2. OBS Overlay (Local Test):      http://localhost:8080/overlay
-3. OBS Overlay (Windows PC LAN):  http://192.168.1.41:8080/overlay
+1. OpenLifter (Scorekeeper Mac):        http://localhost:8080/releases/1.3/
+2. Default Overlay (Local / LAN):       http://localhost:8080/overlay/default  |  http://192.168.1.41:8080/overlay/default
+3. Maverick Overlay (Local / LAN):      http://localhost:8080/overlay/maverick |  http://192.168.1.41:8080/overlay/maverick
 ==============================================================
 ```
 
@@ -75,14 +76,14 @@ You will see output similar to:
 
 ### 3. Preview the Overlay in a Browser or Local OBS
 
-- **Browser Preview:** Click **Open OBS Overlay ↗** in the top navbar (or visit **`http://localhost:8080/overlay`**).
+- **Browser Preview:** Click **Default Overlay ↗** or **Maverick Overlay ↗** in the top navbar (or visit **`http://localhost:8080/overlay/default`** or **`http://localhost:8080/overlay/maverick`**).
   - Use the top preview bar to toggle between **Lower-Third Only**, **Full Flight Board**, **Both**, or **Toggle Test Backdrop**.
   - Click **Good Lift** or **No Lift** in OpenLifter and watch the overlay update in real time.
 - **Local OBS Studio Test:**
   1. Open OBS Studio on your Mac.
   2. Under **Sources**, click **`+`** → **Browser**.
   3. Set the following properties:
-     - **URL:** `http://localhost:8080/overlay`
+     - **URL:** `http://localhost:8080/overlay/default` *(or `http://localhost:8080/overlay/maverick` for the compact electric-pink/white/black Maverick theme)*
      - **Width:** `1920`
      - **Height:** `1080`
   4. Click **OK**. (Inside OBS, the preview toolbar and test background automatically hide so the overlay is 100% transparent over your camera/video source.)
@@ -104,7 +105,7 @@ On competition day, the **Mac** runs OpenLifter and `server.js`, while the **Win
    ```bash
    node server.js
    ```
-2. Note the **Windows PC LAN URL** printed in the terminal (for example, `http://192.168.1.41:8080/overlay`).
+2. Note the **LAN URL** printed in the terminal (for example, `http://192.168.1.41:8080/overlay/default` or `http://192.168.1.41:8080/overlay/maverick`).
 3. Open **`http://localhost:8080/releases/1.3/`** in Chrome on the Mac.
    > **Important:** Always use OpenLifter via `http://localhost:8080/releases/1.3/` on the Mac (not `openlifter.com`), because the bridge script is served from `localhost:8080`.
 4. If the Mac is also feeding a venue projector/TV, drag the OpenLifter browser window to the projector display (or mirror displays) and press **Toggle Fullscreen** on the Lifting page.
@@ -117,7 +118,7 @@ Recommend setting up two scenes in OBS on the Windows PC so the stream operator 
 1. Add your **Video Capture Device** (platform camera) and audio inputs.
 2. Click **`+`** under **Sources** → **Browser** and name it `Scoreboard Lower-Third`.
 3. Configure the Browser Source:
-   - **URL:** `http://<MAC-IP>:8080/overlay?mode=lower-third&clean=1` *(replace `<MAC-IP>` with the IP printed by `node server.js`)*
+   - **URL:** `http://<MAC-IP>:8080/overlay/maverick?mode=lower-third&clean=1` *(or `/overlay/default?...`; replace `<MAC-IP>` with the IP printed by `node server.js`)*
    - **Width:** `1920`
    - **Height:** `1080`
    - Check **Refresh browser when scene becomes active** (optional safety fallback).
@@ -126,7 +127,7 @@ Recommend setting up two scenes in OBS on the Windows PC so the stream operator 
 1. Duplicate or add your camera source (optional background).
 2. Click **`+`** under **Sources** → **Browser** and name it `Flight Standings Board`.
 3. Configure the Browser Source:
-   - **URL:** `http://<MAC-IP>:8080/overlay?mode=board&clean=1`
+   - **URL:** `http://<MAC-IP>:8080/overlay/maverick?mode=board&clean=1` *(or `/overlay/default?...`)*
    - **Width:** `1920`
    - **Height:** `1080`
 
@@ -134,21 +135,24 @@ Recommend setting up two scenes in OBS on the Windows PC so the stream operator 
 
 ## Overlay URL Parameters Reference
 
-You can customize how `/overlay` renders using URL query parameters:
+Choose a theme and density path (`/overlay/default`, `/overlay/default/tight`, `/overlay/maverick`, or `/overlay/maverick/tight`; `/overlay` redirects to `/overlay/default`) and customize layout via query parameters:
 
 | URL | Description |
 | :--- | :--- |
-| `http://<ip>:8080/overlay` | Default Lower-Third view (auto-hides toolbar inside OBS) |
-| `http://<ip>:8080/overlay?mode=lower-third&clean=1` | Broadcast Lower-Third banner only (toolbar & backdrop hidden) |
-| `http://<ip>:8080/overlay?mode=board&clean=1` | Full Flight Lifting Order & Standings table only |
-| `http://<ip>:8080/overlay?mode=both&clean=1` | Both the Flight Board and Lower-Third simultaneously |
+| `http://<ip>:8080/overlay/default` | Default theme, standard height |
+| `http://<ip>:8080/overlay/default/tight` | Default theme, vertically compact |
+| `http://<ip>:8080/overlay/maverick` | Maverick theme (electric pink, white & black), standard height |
+| `http://<ip>:8080/overlay/maverick/tight` | Maverick theme (electric pink, white & black), vertically compact |
+| `http://<ip>:8080/overlay/maverick/tight?mode=lower-third&clean=1` | Broadcast Lower-Third banner only (toolbar & backdrop hidden) |
+| `http://<ip>:8080/overlay/maverick/tight?mode=board&clean=1` | Full Flight Lifting Order & Standings table only |
+| `http://<ip>:8080/overlay/maverick/tight?mode=both&clean=1` | Both the Flight Board and Lower-Third simultaneously |
 
 ---
 
 ## Troubleshooting & Competition Day Tips
 
-- **Windows PC cannot reach `http://<MAC-IP>:8080/overlay`:**
-  1. Test opening `http://<MAC-IP>:8080/overlay` in Chrome/Edge on the Windows PC first.
+- **Windows PC cannot reach `http://<MAC-IP>:8080/overlay/default` or `/overlay/maverick`:**
+  1. Test opening `http://<MAC-IP>:8080/overlay/maverick` in Chrome/Edge on the Windows PC first.
   2. Check **System Settings → Network → Firewall** on the Mac: either turn the firewall off on the local network or allow incoming connections for `node`.
   3. Verify both machines are on the same subnet (e.g., `192.168.1.x`) and not on an isolated Guest Wi-Fi network.
 - **OBS Overlay is stuck on "Waiting for Lifter...":**

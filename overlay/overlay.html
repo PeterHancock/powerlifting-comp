@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{OVERLAY_TITLE}}</title>
+  <link rel="stylesheet" href="/overlay/overlay.css" />
+</head>
+<body data-theme="{{OVERLAY_THEME}}" data-density="{{OVERLAY_DENSITY}}" data-plate-scale="{{PLATE_SCALE}}" data-view="lower-third" class="preview-backdrop">
+  <div class="stage">
+    <!-- Top preview bar: automatically hidden in OBS Browser Source or when ?clean=1 -->
+    <div class="preview-toolbar" id="previewToolbar">
+      <div class="toolbar-group">
+        <span class="sync-badge">
+          <span class="sync-dot" id="syncDot"></span>
+          <span id="syncStatus">Live SSE Connected</span>
+        </span>
+        <a class="toolbar-btn" data-variant="default:normal" href="/overlay/default">Default</a>
+        <a class="toolbar-btn" data-variant="default:tight" href="/overlay/default/tight">Default Tight</a>
+        <a class="toolbar-btn" data-variant="maverick:normal" href="/overlay/maverick">Maverick</a>
+        <a class="toolbar-btn" data-variant="maverick:tight" href="/overlay/maverick/tight">Maverick Tight</a>
+      </div>
+      <div class="toolbar-group">
+        <button class="toolbar-btn active" data-set-view="lower-third">Lower-Third Only</button>
+        <button class="toolbar-btn" data-set-view="board">Full Flight Board</button>
+        <button class="toolbar-btn" data-set-view="both">Both</button>
+        <button class="toolbar-btn" id="toggleBackdropBtn">Toggle Test Backdrop</button>
+      </div>
+    </div>
+
+    <!-- Center: Full Flight Standings & Lifting Order Board -->
+    <div class="board-wrapper">
+      <div class="board-header">
+        <div class="board-title" id="boardMeetName">Waiting for OpenLifter...</div>
+        <div class="board-subtitle" id="boardFlightInfo">Flight A • Squat</div>
+      </div>
+      <table class="flight-table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Lifter</th>
+            <th>Team</th>
+            <th>Class / BW</th>
+            <th>Rack</th>
+            <th style="text-align:center">1st</th>
+            <th style="text-align:center">2nd</th>
+            <th style="text-align:center">3rd</th>
+            <th style="text-align:end">Best S</th>
+            <th style="text-align:end">Best B</th>
+            <th style="text-align:end">Best D</th>
+            <th style="text-align:end">Total</th>
+          </tr>
+        </thead>
+        <tbody id="flightTableBody">
+          <tr>
+            <td colspan="12" style="text-align:center;padding:20px;" class="cell-muted">
+              Open OpenLifter at <strong>http://localhost:8080</strong> and use <strong>Load from File</strong> on the Home page (or set up a meet) to begin!
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Bottom: Broadcast Lower-Third Overlay -->
+    <div class="lower-third-wrapper">
+      <div class="lt-top-strip">
+        <div class="lt-badges">
+          <span class="badge-pill badge-lift" id="ltLiftBadge">SQUAT • ATTEMPT 1</span>
+          <span class="badge-pill" id="ltFlightBadge">FLIGHT A</span>
+          <span class="badge-pill badge-rack" id="ltRackBadge">RACK: —</span>
+        </div>
+        <div class="on-deck-pill" id="ltOnDeck">
+          ON DECK: <strong>—</strong>
+        </div>
+      </div>
+
+      <div class="lt-card">
+        <!-- 1. Lifter Identity -->
+        <div class="lt-section">
+          <div class="lifter-name" id="ltLifterName">Waiting for Lifter...</div>
+          <div class="lifter-meta" id="ltLifterMeta">
+            <span class="meta-tag">OpenLifter Live Sync</span>
+          </div>
+        </div>
+
+        <!-- 2. Current Lift Attempts (1 / 2 / 3) -->
+        <div class="lt-section">
+          <div class="attempts-label" id="ltAttemptsHeader">Squat Attempts</div>
+          <div class="attempts-row" id="ltAttemptsRow">
+            <div class="attempt-pill">—</div>
+            <div class="attempt-pill">—</div>
+            <div class="attempt-pill">—</div>
+          </div>
+        </div>
+
+        <!-- 3. Meet Summary (Best S / B / D / Total) -->
+        <div class="lt-section">
+          <div class="summary-grid">
+            <div class="stat-box">
+              <div class="stat-label">Squat</div>
+              <div class="stat-value" id="ltBestS">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Bench</div>
+              <div class="stat-value" id="ltBestB">—</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Deadlift</div>
+              <div class="stat-value" id="ltBestD">—</div>
+            </div>
+            <div class="stat-box total-box">
+              <div class="stat-label">Total</div>
+              <div class="stat-value" id="ltTotal">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Bar Weight & Plate Graphic -->
+        <div class="lt-section bar-weight-section">
+          <div>
+            <div class="bar-weight-Primary" id="ltBarPrimary">0 kg</div>
+            <div class="bar-weight-secondary" id="ltBarSecondary">0 lbs</div>
+          </div>
+          <div class="plate-graphic" id="ltPlateGraphic"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/overlay/overlay.js"></script>
+</body>
+</html>

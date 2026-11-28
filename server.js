@@ -169,15 +169,22 @@ const INJECTED_BRIDGE_SCRIPT = `
     statusText.textContent = "OBS Synced";
     statusText.style.fontWeight = "600";
 
-    const overlayLink = document.createElement("a");
-    overlayLink.href = "/overlay";
-    overlayLink.target = "_blank";
-    overlayLink.textContent = "Open OBS Overlay ↗";
-    overlayLink.style.cssText = "color:#60a5fa;text-decoration:none;font-weight:600;font-size:11px;";
+    const defaultOverlayLink = document.createElement("a");
+    defaultOverlayLink.href = "/overlay/default";
+    defaultOverlayLink.target = "_blank";
+    defaultOverlayLink.textContent = "Default Overlay ↗";
+    defaultOverlayLink.style.cssText = "color:#60a5fa;text-decoration:none;font-weight:600;font-size:11px;";
+
+    const maverickOverlayLink = document.createElement("a");
+    maverickOverlayLink.href = "/overlay/maverick";
+    maverickOverlayLink.target = "_blank";
+    maverickOverlayLink.textContent = "Maverick Overlay ↗";
+    maverickOverlayLink.style.cssText = "color:#ff4db8;text-decoration:none;font-weight:600;font-size:11px;";
 
     bar.appendChild(statusDot);
     bar.appendChild(statusText);
-    bar.appendChild(overlayLink);
+    bar.appendChild(defaultOverlayLink);
+    bar.appendChild(maverickOverlayLink);
     navbar.appendChild(bar);
   }
 
@@ -360,20 +367,63 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 5. OBS Broadcast Overlay (/overlay)
+  // 5. OBS Broadcast Overlays (/overlay/default, /overlay/default/tight, /overlay/maverick, /overlay/maverick/tight)
   if (pathname === "/overlay" || pathname === "/overlay/") {
-    const overlayHtmlPath = path.join(OVERLAY_DIR, "index.html");
+    res.writeHead(302, { Location: `/overlay/default${url.search}` });
+    res.end();
+    return;
+  }
+
+  const OVERLAY_ASSETS = {
+    "/overlay/overlay.js": { file: "overlay.js", contentType: "application/javascript; charset=utf-8" },
+    "/overlay/overlay.css": { file: "overlay.css", contentType: "text/css; charset=utf-8" },
+  };
+
+  if (OVERLAY_ASSETS[pathname]) {
+    const asset = OVERLAY_ASSETS[pathname];
+    const assetPath = path.join(OVERLAY_DIR, asset.file);
+    fs.readFile(assetPath, "utf8", (err, content) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Overlay asset not found");
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": asset.contentType,
+        "Cache-Control": "no-store",
+      });
+      res.end(content);
+    });
+    return;
+  }
+
+  const normalizedOverlayPath = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
+  const OVERLAY_VARIANTS = {
+    "/overlay/default": { theme: "default", density: "normal", plateScale: "1", title: "OpenLifter OBS Live Overlay — Default" },
+    "/overlay/default/tight": { theme: "default", density: "tight", plateScale: "0.84", title: "OpenLifter OBS Live Overlay — Default Tight" },
+    "/overlay/maverick": { theme: "maverick", density: "normal", plateScale: "1", title: "Maverick OBS Live Overlay" },
+    "/overlay/maverick/tight": { theme: "maverick", density: "tight", plateScale: "0.84", title: "Maverick OBS Live Overlay — Tight" },
+  };
+
+  if (OVERLAY_VARIANTS[normalizedOverlayPath]) {
+    const variant = OVERLAY_VARIANTS[normalizedOverlayPath];
+    const overlayHtmlPath = path.join(OVERLAY_DIR, "overlay.html");
     fs.readFile(overlayHtmlPath, "utf8", (err, html) => {
       if (err) {
         res.writeHead(500, { "Content-Type": "text/plain" });
         res.end("Overlay not found");
         return;
       }
+      const rendered = html
+        .replace("{{OVERLAY_TITLE}}", variant.title)
+        .replace("{{OVERLAY_THEME}}", variant.theme)
+        .replace("{{OVERLAY_DENSITY}}", variant.density)
+        .replace("{{PLATE_SCALE}}", variant.plateScale);
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
       });
-      res.end(html);
+      res.end(rendered);
     });
     return;
   }
@@ -418,8 +468,9 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log("==============================================================");
   console.log("🏋️  OpenLifter + OBS Live Overlay Server Running!");
   console.log("==============================================================");
-  console.log(`1. OpenLifter (Scorekeeper Mac):  http://localhost:${PORT}/releases/1.3/`);
-  console.log(`2. OBS Overlay (Local Test):      http://localhost:${PORT}/overlay`);
-  console.log(`3. OBS Overlay (Windows PC LAN):  http://${lanIp}:${PORT}/overlay`);
+  console.log(`1. OpenLifter (Scorekeeper Mac):        http://localhost:${PORT}/releases/1.3/`);
+  console.log(`2. Default Overlay:                     http://localhost:${PORT}/overlay/default        |  /tight`);
+  console.log(`3. Maverick Overlay:                    http://localhost:${PORT}/overlay/maverick       |  /tight`);
+  console.log(`4. Windows PC LAN Base:                 http://${lanIp}:${PORT}/overlay/maverick/tight`);
   console.log("==============================================================");
 });
